@@ -86,7 +86,7 @@
             <field name="supplier_transfermethod"/>
             <field name="supplier_transferserver"/>
             <field name="supplier_transferlogin"/>
-            <field name="supplier_transferpassword" password="True"/>
+            <field name="supplier_transferpassword" zpassword="True"/>
             <field name="supplier_file_source"/>
             <field name="supplier_file_zipped"/>
             <field name="supplier_file_resulting"/>

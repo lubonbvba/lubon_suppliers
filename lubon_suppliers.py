@@ -464,6 +464,7 @@ class lubon_suppliers_import_stats(models.Model):
 		logger.info("Start processproducts")
 		starttime=datetime.now()
 		modif_timestamp=datetime.now()
+		global runtime
 		if "manual_activation" in self.env.context.keys():
 			logger.info("process products manually activated")# exiting loop after 1000 products")
 			runtime=datetime.now()
