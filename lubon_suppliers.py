@@ -7,7 +7,6 @@ import ftplib, zipfile, logging,csv,tempfile,shutil, barcodenumber
 import pdb, base64
 
 logger = logging.getLogger(__name__)
-runtime = datetime.now()
 
 class res_partner(models.Model):
 	_inherit = 'res.partner'
@@ -104,9 +103,7 @@ class res_partner(models.Model):
 	def readfile(self, x, supplier_stats=False):
 		#This function imports the csv file in the database
 		logger.info("Start readfile")
-#		global runtime
 		global timeout
-		runtime=datetime.now()
 		timeout=False
 		starttime=datetime.now()
 		table_stats=self.env['lubon_suppliers.import_stats']
@@ -116,6 +113,8 @@ class res_partner(models.Model):
 									'start': datetime.now(),
 									'name': self.supplier_prefix + "-" +datetime.now().strftime("%A, %d. %B %Y %I:%M%p") })
 		table_import=self.env['lubon_suppliers.info_import']
+		supplier_stats.runtime=	runtime=datetime.now()
+
 		if self.supplier_file_data:
 			self.processupload()
 		table_import.processfile(supplier_stats)
@@ -281,6 +280,7 @@ class lubon_suppliers_info_import(models.Model):
 		fi = open(stats.supplier_id.supplier_file, 'rb')
 		data = fi.read()
 		fi.close()
+		runtime=fields.Datetime.from_string(stats.runtime)
 #		fo = open(stats.supplier_id.supplier_file, 'wb')
 #		fo.write(data.replace('\x00', ''))
 #		fo.close()
@@ -340,7 +340,7 @@ class lubon_suppliers_info_import(models.Model):
 						p.sale_ok=False
 						p.purchase_ok=False
 						logger.warning("Deleting product not possible: %d, %s", p.id,p.name)
-					if (datetime.now()-runtime).seconds > stats.supplier_id.supplier_max_runtime * 60:
+					if (datetime.now()- runtime).seconds > stats.supplier_id.supplier_max_runtime * 60:
 						logger.warning("Maximum runtime expired")
 						timeout=True
 						break
@@ -417,7 +417,7 @@ class lubon_suppliers_import_stats(models.Model):
 	sql_query01=fields.Text()
 	sql_query02=fields.Text()
 	delete_finished=fields.Boolean(string="Del ok")
-
+	runtime=fields.Datetime()
 
 	@api.multi
 	def processbrands(self):
@@ -466,7 +466,8 @@ class lubon_suppliers_import_stats(models.Model):
 		modif_timestamp=datetime.now()
 		if "manual_activation" in self.env.context.keys():
 			logger.info("process products manually activated")# exiting loop after 1000 products")
-			runtime=datetime.now()
+			self.runtime=datetime.now()
+		runtime=fields.Datetime.from_string(self.runtime)
 		newparts=self.parts_ids.search([('product_id','=', False),('stats_id','=', self.id)])
 		logger.info('Start adding %d new parts', len(newparts))
 		table_products=self.env['product.template']
