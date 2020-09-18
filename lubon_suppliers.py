@@ -7,7 +7,7 @@ import ftplib, zipfile, logging,csv,tempfile,shutil, barcodenumber
 import pdb, base64
 
 logger = logging.getLogger(__name__)
-
+runtime = datetime.now()
 
 class res_partner(models.Model):
 	_inherit = 'res.partner'
@@ -104,7 +104,7 @@ class res_partner(models.Model):
 	def readfile(self, x, supplier_stats=False):
 		#This function imports the csv file in the database
 		logger.info("Start readfile")
-		global runtime
+#		global runtime
 		global timeout
 		runtime=datetime.now()
 		timeout=False
@@ -464,7 +464,6 @@ class lubon_suppliers_import_stats(models.Model):
 		logger.info("Start processproducts")
 		starttime=datetime.now()
 		modif_timestamp=datetime.now()
-		global runtime
 		if "manual_activation" in self.env.context.keys():
 			logger.info("process products manually activated")# exiting loop after 1000 products")
 			runtime=datetime.now()
