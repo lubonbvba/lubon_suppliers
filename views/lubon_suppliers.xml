@@ -48,6 +48,8 @@
          <field name="supplier_debug" />
          <field name="supplier_reinit" />
          <field name="supplier_history" />
+         <field name="supplier_max_runtime"/>
+         <field name="active_stats_id"/>
        </group>
        <group>
         <button string="Process" name="retrieve_prices" type="object"/>
@@ -71,6 +73,7 @@
             <field name="numupdated"/>
             <field name="numdeleted"/>
             <field name="numbrands"/>
+            <field name="delete_finished"/>
             <button string="Brands" name="processbrands" type="object"/>
             <button string="Products" name="processproducts" type="object" context="{'manual_activation': True}"/>
           </tree>

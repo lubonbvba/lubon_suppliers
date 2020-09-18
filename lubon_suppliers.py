@@ -8,6 +8,7 @@ import pdb, base64
 
 logger = logging.getLogger(__name__)
 
+
 class res_partner(models.Model):
 	_inherit = 'res.partner'
 
@@ -34,9 +35,9 @@ class res_partner(models.Model):
 	brand_ids=fields.Many2many('res.partner',domain="[('manufacturer','=',True)]",relation="supplierbrands", column1="suppliers", column2="brands")
 	supplier_header_line=fields.Integer(string="Header line", default=1, help="Line number to retrieve field names")
 	supplier_delimiter=fields.Char(string="Delimiter",default=";",size=1)
-
+	supplier_max_runtime=fields.Integer(string="Maximum runtime", help="Maximum run time before the procedure ends")
 	supplier_default_manufacturer=fields.Many2one('res.partner', domain="[('manufacturer','=',True)]")
-
+	active_stats_id=fields.Many2one('lubon_suppliers.import_stats', string="Active session")
 	supplier_field_description=fields.Many2one('lubon_suppliers.fieldnames', domain="[('supplier_id','=',active_id)]")
 	supplier_field_part_supplier=fields.Many2one('lubon_suppliers.fieldnames', domain="[('supplier_id','=',active_id)]")
 	supplier_field_part_manufacturer=fields.Many2one('lubon_suppliers.fieldnames', domain="[('supplier_id','=',active_id)]")
@@ -53,7 +54,6 @@ class res_partner(models.Model):
 	supplier_field_names=fields.One2many('lubon_suppliers.fieldnames','supplier_id')
 	supplier_debug=fields.Boolean(string="Full debug", default=False)
 	supplier_reinit=fields.Boolean(string="Reinit", default=False, help="Delete all non used products")
-
 	supplier_file_data=fields.Binary()
 	supplier_fname=fields.Char()
 	supplier_history=fields.Integer(help="Number of occurences to keep (not days)")
@@ -80,11 +80,14 @@ class res_partner(models.Model):
 								'start': datetime.now(),
 								'startfunc':'retrieve_prices',
 								'name': self.supplier_prefix + "-" +datetime.now().strftime("%A, %d. %B %Y %I:%M%p") })
+		self.active_stats_id=stats
+
+
 		self.getfile(stats)
 		self.readfile(1,stats)
-		#stats.processbrands()
+		##stats.processbrands()
 		stats.processproducts()
-		self.cleanup()
+		#self.cleanup()
 		stats.elap_total=(datetime.now()-starttime).seconds
 		logger.info("End retrieve_prices")
 
@@ -101,6 +104,10 @@ class res_partner(models.Model):
 	def readfile(self, x, supplier_stats=False):
 		#This function imports the csv file in the database
 		logger.info("Start readfile")
+		global runtime
+		global timeout
+		runtime=datetime.now()
+		timeout=False
 		starttime=datetime.now()
 		table_stats=self.env['lubon_suppliers.import_stats']
 		if not supplier_stats:
@@ -321,6 +328,7 @@ class lubon_suppliers_info_import(models.Model):
 				if not(productslist[product]['Found']):
 					to_delete.append(productslist[product]['product_template_id'])
 			obsolete_products=self.env['product.template'].browse(to_delete)
+			logger.warning("Number of obsolete products: %d", len(obsolete_products))
 			for p in obsolete_products:
 					deletethis=True
 					for v in p.product_variant_ids:
@@ -332,8 +340,14 @@ class lubon_suppliers_info_import(models.Model):
 						p.sale_ok=False
 						p.purchase_ok=False
 						logger.warning("Deleting product not possible: %d, %s", p.id,p.name)
+					if (datetime.now()-runtime).seconds > stats.supplier_id.supplier_max_runtime * 60:
+						logger.warning("Maximum runtime expired")
+						timeout=True
+						break
 			stats.numparts=n
 			stats.numdeleted=len(to_delete)
+			if not timeout:
+				stats.delete_finished=True
 		logger.info("End processfile")
 
 
@@ -402,6 +416,8 @@ class lubon_suppliers_import_stats(models.Model):
 	parts_ids=fields.One2many('lubon_suppliers.info_import','stats_id')
 	sql_query01=fields.Text()
 	sql_query02=fields.Text()
+	delete_finished=fields.Boolean(string="Del ok")
+
 
 	@api.multi
 	def processbrands(self):
@@ -449,7 +465,8 @@ class lubon_suppliers_import_stats(models.Model):
 		starttime=datetime.now()
 		modif_timestamp=datetime.now()
 		if "manual_activation" in self.env.context.keys():
-			logger.info("process products manually activated, exiting loop after 1000 products")
+			logger.info("process products manually activated")# exiting loop after 1000 products")
+			runtime=datetime.now()
 		newparts=self.parts_ids.search([('product_id','=', False),('stats_id','=', self.id)])
 		logger.info('Start adding %d new parts', len(newparts))
 		table_products=self.env['product.template']
@@ -474,10 +491,13 @@ class lubon_suppliers_import_stats(models.Model):
 
 			if self.supplier_id.supplier_debug or numteller>=1000:
 				numteller=0;
-				logger.info("Number: %d, Part: %s,Operation: %s, Duration:, %d",self.numupdated,newpart.description, operation, (datetime.now()-part_starttime).microseconds)
-				if "manual_activation" in self.env.context.keys():
-					logger.info("process products manually activated, exiting loop")
-					break
+				logger.info("Number created: %d, Part: %s,Operation: %s, Duration:, %d",self.numcreated,newpart.description, operation, (datetime.now()-part_starttime).microseconds)
+#				if "manual_activation" in self.env.context.keys():
+#					logger.info("process products manually activated, exiting loop")
+#					break
+			if (datetime.now()-runtime).seconds > self.supplier_id.supplier_max_runtime * 60:
+				logger.warning("Maximum runtime expired (Newparts)")
+				break
 
 		changedparts=self.parts_ids.search([('price_change','!=',0),('stats_id','=', self.id),('product_id','!=', False),('processed','=', False)])
 		logger.info('Start updating %d changed parts', len(changedparts))
@@ -500,7 +520,10 @@ class lubon_suppliers_import_stats(models.Model):
 							})
 			changedpart.processed=True
 			if self.supplier_id.supplier_debug:
-					logger.info("Number: %d Part: %s, Duration: %d",self.numupdated, changedpart.description, (datetime.now()-part_starttime).microseconds)
+					logger.info("Number updated: %d Part: %s, Duration: %d",self.numupdated, changedpart.description, (datetime.now()-part_starttime).microseconds)
+			if (datetime.now()-runtime).seconds > self.supplier_id.supplier_max_runtime * 60:
+				logger.warning("Maximum runtime expired (Changedparts)")	
+				break	
 		self.elap_products= (datetime.now()-starttime).seconds
 		logger.info("End processproducts")
 	
