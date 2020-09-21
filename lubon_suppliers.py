@@ -272,6 +272,8 @@ class lubon_suppliers_info_import(models.Model):
 		logger.info("Start processfile")
 		n=0
 		dummy=0
+		refusedbrands={}
+		processedbrands={}
 		fieldlist=self.loadfieldnames(stats)
 		brandslist=self.loadbrands(stats)
 		productslist=self.loadcurrentproducts(stats)
@@ -298,6 +300,10 @@ class lubon_suppliers_info_import(models.Model):
 					}
 				manuf_check=newline['manufacturer'].upper()	
 				if manuf_check in brandslist:
+					if manuf_check in processedbrands:
+						processedbrands[manuf_check]+=1
+					else:
+						processedbrands.update({manuf_check:1})
 					if 'EanCode' in row.keys():
 						eancode=row['EanCode']
 					else:
@@ -321,6 +327,9 @@ class lubon_suppliers_info_import(models.Model):
 						pdb.set_trace()	
 					if (stats.supplier_id.supplier_num >0  and  n>stats.supplier_id.supplier_num):
 						break
+				else:
+					if not manuf_check in refusedbrands:
+						refusedbrands.update({manuf_check:"1"})
 			cleanfile.close()
 			logger.info("Determining obsolete products")
 			to_delete=[]
@@ -329,23 +338,32 @@ class lubon_suppliers_info_import(models.Model):
 					to_delete.append(productslist[product]['product_template_id'])
 			obsolete_products=self.env['product.template'].browse(to_delete)
 			logger.warning("Number of obsolete products: %d", len(obsolete_products))
+			nDeleted=0
+			nCheck=0
+			timeout=False
 			for p in obsolete_products:
 					deletethis=True
+					nCheck+=1
 					for v in p.product_variant_ids:
 						deletethis = not(v.sales_order_lines or v.purchase_order_lines or v.invoice_lines or v.procurement_order or v.stock_inventory_line or v.stock_move)
 					if deletethis:
-						logger.warning("Deleting product: %d, %s", p.id,p.name)
+						#logger.warning("Deleting product: %d, %s, %s", p.id,p.default_code, p.name)
 						p.unlink()
+						nDeleted+=1
 					else:
 						p.sale_ok=False
 						p.purchase_ok=False
 						logger.warning("Deleting product not possible: %d, %s", p.id,p.name)
-					if (datetime.now()- runtime).seconds > stats.supplier_id.supplier_max_runtime * 60:
-						logger.warning("Maximum runtime expired")
-						timeout=True
-						break
+					if nCheck == 100:
+						logger.warning("Deleted 100 products. Delete count=%d/%d",nDeleted,len(obsolete_products))
+						nCheck=0
+						if (datetime.now()- runtime).seconds > stats.supplier_id.supplier_max_runtime * 60:
+							logger.warning("Maximum runtime expired")
+							timeout=True
+							break
+
 			stats.numparts=n
-			stats.numdeleted=len(to_delete)
+			stats.numdeleted=nDeleted
 			if not timeout:
 				stats.delete_finished=True
 		logger.info("End processfile")
