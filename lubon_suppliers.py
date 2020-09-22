@@ -56,10 +56,10 @@ class res_partner(models.Model):
 	supplier_file_data=fields.Binary()
 	supplier_fname=fields.Char()
 	supplier_history=fields.Integer(help="Number of occurences to keep (not days)")
-	@api.one
-	def process_schedule(self):
-		logger.info("Executing Schedule for:" + str(self.id))
 
+	@api.one
+	def process_schedule(self, dummy=None):
+		logger.info("Executing Schedule for:" + str(self.id))
 		self.retrieve_prices()
 
 
@@ -72,6 +72,7 @@ class res_partner(models.Model):
 		logger.info("Start retrieve_prices")
 		starttime=datetime.now()
 		if self.supplier_reinit:
+			logger.info("Performing reinit")
 			self.initsupplier()
 			self.supplier_reinit=False
 		table_stats=self.env['lubon_suppliers.import_stats']
@@ -79,14 +80,14 @@ class res_partner(models.Model):
 								'start': datetime.now(),
 								'startfunc':'retrieve_prices',
 								'name': self.supplier_prefix + "-" +datetime.now().strftime("%A, %d. %B %Y %I:%M%p") })
-		self.active_stats_id=stats
-
+		#self.active_stats_id=stats
+		logger.info("Stats created")
 
 		self.getfile(stats)
 		self.readfile(1,stats)
 		##stats.processbrands()
 		stats.processproducts()
-		#self.cleanup()
+		self.cleanup()
 		stats.elap_total=(datetime.now()-starttime).seconds
 		logger.info("End retrieve_prices")
 
@@ -435,6 +436,7 @@ class lubon_suppliers_import_stats(models.Model):
 	sql_query01=fields.Text()
 	sql_query02=fields.Text()
 	delete_finished=fields.Boolean(string="Del ok")
+	completed=fields.Boolean(string="Completed", help="Completed")
 	runtime=fields.Datetime()
 
 	@api.multi
@@ -493,6 +495,7 @@ class lubon_suppliers_import_stats(models.Model):
 		self.numcreated=0
 		self.numupdated=0
 		numteller=0
+		timeout=False
 		for newpart in newparts:
 			part_starttime=datetime.now()
 			self.numcreated+=1
@@ -516,6 +519,7 @@ class lubon_suppliers_import_stats(models.Model):
 #					break
 			if (datetime.now()-runtime).seconds > self.supplier_id.supplier_max_runtime * 60:
 				logger.warning("Maximum runtime expired (Newparts)")
+				timeout=true
 				break
 
 		changedparts=self.parts_ids.search([('price_change','!=',0),('stats_id','=', self.id),('product_id','!=', False),('processed','=', False)])
@@ -542,7 +546,10 @@ class lubon_suppliers_import_stats(models.Model):
 					logger.info("Number updated: %d Part: %s, Duration: %d",self.numupdated, changedpart.description, (datetime.now()-part_starttime).microseconds)
 			if (datetime.now()-runtime).seconds > self.supplier_id.supplier_max_runtime * 60:
 				logger.warning("Maximum runtime expired (Changedparts)")	
+				timeout=True
 				break	
 		self.elap_products= (datetime.now()-starttime).seconds
+		if not timeout:
+			self.completed=True
 		logger.info("End processproducts")
 	
