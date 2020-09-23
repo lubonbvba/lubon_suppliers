@@ -86,8 +86,11 @@ class res_partner(models.Model):
 		self.getfile(stats)
 		self.readfile(1,stats)
 		##stats.processbrands()
-		stats.processproducts()
-		self.cleanup()
+		if stats.delete_finished:
+			stats.processproducts()
+			self.cleanup()
+		else:
+			logger.info("No process products - timeout")
 		stats.elap_total=(datetime.now()-starttime).seconds
 		logger.info("End retrieve_prices")
 
@@ -549,7 +552,7 @@ class lubon_suppliers_import_stats(models.Model):
 				timeout=True
 				break	
 		self.elap_products= (datetime.now()-starttime).seconds
-		if not timeout:
+		if not timeout and self.delete_finished:
 			self.completed=True
 		logger.info("End processproducts")
 	
